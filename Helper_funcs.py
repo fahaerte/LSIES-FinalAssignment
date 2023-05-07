@@ -3,13 +3,19 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from geopy import distance
-from datetime import time
+from datetime import time, datetime
 from csv import reader
+
+columns_sensors_positions = ['sensor_name', 'latitude', 'longitude', 'region']
+folders = ['region_1_mustamäe_kristiine', 'region_2_data_kesklinn', 'region_3_kadriorg_lasnamäe',
+           'region_4_ülemiste']
+start_time = datetime.strptime('2022.08.01 00:00:00', '%Y.%m.%d %H:%M:%S')
+end_time = datetime.strptime('2022.08.13 23:59:00', '%Y.%m.%d %H:%M:%S')
 
 
 def make_groups(IDs, stations_df):
     # IDs - list of station IDs
-    # coordinates - array of station's coordinates, 
+    # coordinates - array of station's coordinates,
     #             - indexable by station ID
     # IDs and coordinates are indexed identically
     # function returns indexes of grouped stations
@@ -25,10 +31,12 @@ def make_groups(IDs, stations_df):
     groups_df = pd.DataFrame(data={'grp': tdata}, index=IDs)
 
     for sid in IDs:
-        single = stations_df['coords'][sid]
+        single = (stations_df[stations_df['sensor_name'] == sid]['latitude'][0],
+                  stations_df[stations_df['sensor_name'] == sid]['longitude'][0])
 
         for sidd in IDs:
-            tcoord = stations_df.loc[sidd]['coords']
+            tcoord = (stations_df[stations_df['sensor_name'] == sidd]['latitude'][0],
+                      stations_df[stations_df['sensor_name'] == sidd]['longitude'][0])
             ds.loc[sidd]['d'] = float(distance.distance(single, tcoord).meters)
 
         group = ds.nsmallest(4, 'd')
@@ -163,20 +171,61 @@ def evaluate_resample(df_orig, df_compare):
     return result_list
 
 
-def import_sensor_positions(file):
-    coords = []
-    IDs = []
-
-    with open(file, 'r') as read_obj:
+def import_sensor_positions(dir_path, file):
+    sensor_positions_df = pd.DataFrame(columns=columns_sensors_positions, index=[0])
+    with open(dir_path + file, 'r') as read_obj:
         csv_reader = reader(read_obj)
         for row in csv_reader:
-            coord = (float(row[0].split(' ')[0].replace('(', '')),
-                     float(row[0].split(' ')[1].replace(')', '')))
-            coords.append(coord)
+            data = {columns_sensors_positions[0]: row[1],
+                    columns_sensors_positions[1]: float(row[0].split(' ')[0].replace('(', '')),
+                    columns_sensors_positions[2]: float(row[0].split(' ')[1].replace(')', '')),
+                    columns_sensors_positions[3]: ''}
+            data_df = pd.DataFrame(data, columns=columns_sensors_positions, index=[0])
+            sensor_positions_df = pd.concat([sensor_positions_df, data_df])
 
-            IDs.append(row[1])
+    sensor_positions_df = sensor_positions_df.dropna()
 
-    stations_df = pd.DataFrame(data={'coords': coords, 'IDs': IDs})
-    stations_df.drop_duplicates(subset='IDs', keep='first', inplace=True)
-    stations_df.set_index('IDs', inplace=True)
-    return stations_df
+    for folder in folders:
+        for file in os.listdir(dir_path + folder):
+            sensor_name = file.split('-')[0]
+            region = int(folder.split('_')[1])
+            sensor_positions_df.loc[sensor_positions_df.sensor_name == sensor_name, 'region'] = region
+
+    sensor_positions_df = sensor_positions_df.drop_duplicates(subset='sensor_name', keep="last")
+    return sensor_positions_df
+
+
+def import_sensor_data(dir_path):
+    list_df = []
+    sensor_names = []
+    region_list = []
+
+    for folder in folders:
+        for file in os.listdir(dir_path + folder):
+            sensor_name = file.split('-')[0]
+            region_list.append(int(folder.split('_')[1]))
+            sensor_names.append(file.split('-')[0])
+            df = pd.read_csv(dir_path + folder + "/" + file, index_col=None, header=0)
+            df['Time'] = df.apply(lambda row: datetime.strptime(row['Time'], '%Y-%m-%d %H:%M:%S'), axis=1)
+            df.rename(columns={'dt_sound_level_dB': sensor_name}, inplace=True)
+            list_df.append(df)
+
+    tindex = pd.date_range(start_time, end_time, freq='1min')
+
+    df_data_incomplete = pd.DataFrame(index=tindex, columns=sensor_names)
+
+    idx = 0
+    for df in list_df:
+        # get rid of redundant datapoints
+        df = df[df.Time >= start_time]
+        df = df[df.Time <= end_time]
+        df.drop_duplicates(subset='Time', keep='first', inplace=True)
+
+        # index data by Time
+        df.index = pd.to_datetime(df['Time'])
+        df.drop(columns=['Time'], inplace=True)
+        df = df.reindex(tindex)
+        df_data_incomplete[sensor_names[idx]] = df[sensor_names[idx]]
+        idx = idx + 1
+
+    return df_data_incomplete
