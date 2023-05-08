@@ -4,28 +4,31 @@ import matplotlib.pyplot as plt
 color1 = 'r'
 color2 = 'b'
 
-def print_values(description, rmse_values, sing_values, steps):
+
+def print_values(rmse_values, sing_values, steps):
   print()
-  print(description)
   for rank in range(len(rmse_values)):
     if rank % steps == 0:
       print(f'Rank: {rank+1} RMSE: {rmse_values[rank]} Amount Singular Values: {sing_values[rank]}')
 
-def calc_RMSE_sinVal(U, s, Vt, df):
+
+def calc_RMSE_sinVal_based_on_time_period(U, s, Vt, df, period_index, print_values=False):
     rank_range = range(1, len(df.columns) + 1)
     rmse_list = []
     amount_sing_values = []
 
     for rank in rank_range:
+      if not rank % 2 == 0:
         Sigma = np.zeros((df.shape[0], df.shape[1]))
         Sigma[:rank, :rank] = np.diag(s[:rank])
         df_recon = U.dot(Sigma.dot(Vt))
 
-        rmse = np.sqrt(np.mean((df - df_recon)**2))
+        rmse = np.sqrt(np.mean((df.iloc[period_index] - df_recon[period_index])**2))
         rmse_list.append(rmse.mean())
         amount_sing_values.append(Sigma[rank-1][rank-1])
 
-    # print_values(region, rmse_list, amount_sing_values)
+    if print_values:
+        print_values(rmse_list, amount_sing_values, 1)
 
     return rmse_list, amount_sing_values
 
@@ -48,18 +51,18 @@ def init_ax(ax, rank_values, rmse_values, sing_values, color1, color2):
   return ax
 
 
-def plot_rmse_sinval_global(U, s, Vt, df):
+def plot_rmse_sinval_global_given_SVD(U, s, Vt, df):
     rmse_list, amount_sing_values = calc_RMSE_sinVal(U, s, Vt, df)
-    plot_rmse_sinval_global(rmse_list, amount_sing_values)
+    plot_rmse_sinval(rmse_list, amount_sing_values)
 
 
-def plot_rmse_sinval_global(rmse_list, amount_sing_values):
+def plot_rmse_sinval(rmse_list, amount_sing_values, title):
     rank_range_all_regions = range(1, len(rmse_list) + 1)
-
     amount_sing_values[0] = amount_sing_values[1] * 2
 
     fig, ax = plt.subplots()
     ax = init_ax(ax, rank_range_all_regions, rmse_list, amount_sing_values, color1, color2)
+    ax.set_title(title)
     plt.show()
 
 
