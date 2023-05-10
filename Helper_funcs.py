@@ -46,15 +46,13 @@ def make_groups(IDs, stations_df):
 
     return groups_df.copy()
 
-
+################ interpolation task functions ################
+#------------------------------------------------------------#
 def calculate_correlations(df_data1, df_data2):
     # Function finds intervals of overlapping data, that was actually
     # measured by stations in group. The function then calculates 
     # correlations of measured data for lags from interval [-10; 10].
     # These correlations are then averaged over for each lag value 
-    # { ur(lag) = mean(r(lag,i))) } and variance of these values is calculated
-    # { var(ur) = E[ur(lag) - r(lag,i)] }. Used lag and correlation coeficcient
-    # is chosen by optimizing = -ru(lag) + var(lag)
 
     # Function returns chosel lag and correlation coefficient for each partner
     # station in the group
@@ -74,7 +72,17 @@ def calculate_correlations(df_data1, df_data2):
 
 
 def calculate_linear_regression(df_data1, df_data2, lag):
-    pass
+    # calculates beta and alpha for interpolation
+    # y = beta*x + alpha
+    df_indata = pd.DataFrame(columns=['d1', 'd2'], index=df_data1.index)
+    df_indata['d1'] = df_data1
+    df_indata['d2'] = df_data2.shift(periods=lag)
+    tcov = df_indata.cov(min_periods = 5)
+    tcov = df_indata.cov(min_periods = 5)
+    tvar = df_indata['d2'].var()
+    beta = tcov['d2']['d1']/tvar
+    alpha = df_indata['d1'].mean() - beta*df_indata['d2'].mean()
+    return beta, alpha
 
 
 def init_ax_resamp(ax, resample_pers, rmse_values):
@@ -87,33 +95,14 @@ def init_ax_resamp(ax, resample_pers, rmse_values):
     ax.grid(True)
     return ax
 
-
-def indexer_day(dafr):
-    day_str = time.fromisoformat('07:00:00')
-    day_stp = time.fromisoformat('18:59:59')
-    return dafr.index.indexer_between_time(day_str, day_stp)
-
-
-def indexer_evening(dafr):
-    evening_str = time.fromisoformat('19:00:00')
-    evening_stp = time.fromisoformat('22:59:59')
-    return dafr.index.indexer_between_time(evening_str, evening_stp)
-
-
-def indexer_night(dafr):
-    night_str = time.fromisoformat('23:00:00')
-    night_stp = time.fromisoformat('06:59:59')
-    return dafr.index.indexer_between_time(night_str, night_stp)
-
-
 def evaluate_resample(df_orig, df_compare):
     resample_pers = [1, 2, 5, 10, 15, 20, 30, 60]
 
     sensor_names = list(df_orig.columns)
     result_list = []
 
-    resample_vars_d = pd.DataFrame(data=np.zeros([len(sensor_names), len(resample_pers)]), columns=resample_pers,
-                                   index=sensor_names)
+    resample_vars_d = pd.DataFrame(data=np.zeros([len(sensor_names), len(resample_pers)]), columns=resample_pers, index=sensor_names)
+    
     resample_vars_e = resample_vars_d.copy()
     resample_vars_n = resample_vars_d.copy()
 
@@ -158,15 +147,138 @@ def evaluate_resample(df_orig, df_compare):
         resample_vars_n[per] = df_resamp_n.apply(np.sqrt)
 
         # downsample and get means
+    
+    print(df_orig_d.shape[0])
 
-    if (resample_vars_d[0].isna().sum() == df_orig_d.shape[0]):
-        resample_vars_d[0] = np.zeros(len(sensor_names))
-        resample_vars_n[0] = np.zeros(len(sensor_names))
-        resample_vars_e[0] = np.zeros(len(sensor_names))
+    if (resample_vars_d[1].isna().sum() == df_orig_d.shape[0]):
+        resample_vars_d[1] = np.zeros(len(sensor_names))
+        resample_vars_n[1] = np.zeros(len(sensor_names))
+        resample_vars_e[1] = np.zeros(len(sensor_names))
 
     result_list = [resample_vars_d, resample_vars_e, resample_vars_n]
 
     return result_list
+
+def fill_missing_values(df_data1, df_data2, lags, betas, alphas):
+    # fills missing values in df_data1 by averaging linear interpolations
+    # defined by:
+    # y = beta*x + alpha, where
+    #   - x     ... are columns of df_data2
+    #   - betas ... is list of beta coefficients, their order
+    # corresponding to order of df_data2 columns
+    #   - alphas ... is list of alpha coefficients, their order
+    # corresponding to order of df_data2 columns
+    # Function returns DataFrame with filled with available data
+    # and RMSE between interpolated data and available original data
+    idx = 0
+    for label in df_data2.columns:
+        df_data2[label] = df_data2[label].shift(periods=lags[idx]) * betas[idx] + alphas[idx]
+        idx = idx + 1
+        
+    df_fill = df_data2.apply(np.mean, axis=1)
+    indexer = (df_data1.isna()) & (df_fill.notna())
+    rmsev = []
+    df_err = (df_fill - df_data1)**2
+    rmsev.append(np.sqrt(df_err.mean()))
+    
+    for label in df_data2.columns:
+        df_err = (df_data2[label] - df_data1)**2
+        rmsev.append(np.sqrt(df_err.mean()))
+    
+    df_data1[indexer] = df_fill[indexer]
+    
+    return df_data1.copy(), rmsev
+
+def fill_missing_values_assim(df_data1, df_data2, lags, betas, alphas):
+    # fills missing values in df_data1 by kalman filter assimilation
+    # of linear interpolations
+    # defined by:
+    # y = beta*x + alpha, where
+    #   - x     ... are columns of df_data2
+    #   - betas ... is list of beta coefficients, their order
+    # corresponding to order of df_data2 columns
+    #   - alphas ... is list of alpha coefficients, their order
+    # corresponding to order of df_data2 columns
+    # Function returns DataFrame with filled with available data
+    # and RMSE between interpolated data and available original data
+    idx = 0
+    rmsev = np.zeros(len(alphas))
+    #) calculate linear regression + rmse for each member separately
+    for label in df_data2.columns:
+        df_data2[label] = df_data2[label].shift(periods=lags[idx]) * betas[idx] + alphas[idx]
+        
+        df_err = (df_data2[label] - df_data1)**2
+        rmsev[idx] = np.sqrt(df_err.mean())
+        
+        idx = idx + 1
+    #) use rmse as approximation of variation for kalman coefficients  
+    df_fill = df_data2.apply(lambda row: apply_assimilation(row, rmsev), axis=1)
+    
+    indexer = (df_data1.isna()) & (df_fill.notna())
+    
+    #) get rmse for reference
+    df_err = (df_fill - df_data1)**2    
+
+    rmsevv          = np.zeros(len(rmsev) + 1)
+    rmsevv[-1]      = (np.sqrt(df_err.mean()))
+
+    idx = 0
+    for idx in range(0, len(rmsev)):
+        rmsevv[idx]    = rmsev[idx]
+    
+    df_data1[indexer] = df_fill[indexer]
+    
+    return df_data1.copy(), rmsevv
+
+def apply_assimilation(row, vars):
+    #) function is meant to be used with 'pd.DataFrame.apply' method
+    #) call: df.apply(lambda row: apply_assimilation(row, vars), axis=1)
+    #) row ... row of a dataframe filled with input data for assimilation
+    #) vars ... np.array() of approximated variances 
+    # for each data source. The order of columns in 
+    # DataFrame must corespond to order of variances
+    
+    # 1) calculate the kalman coefficient, but only 
+    #) for the present values -> different coefficient
+    #) if only 2 values available, or all 3
+    if row.isna().sum() == len(row):
+        return np.nan
+    rmt= vars[row.notna()]
+    rmt1 = np.zeros([len(rmt)])
+    idxs = np.arange(len(rmt))
+    for i in idxs:
+        rmt1[i] = np.prod(rmt[idxs != i])
+
+    k_kal = (rmt1) / sum(rmt1)
+        
+    row = row.dropna()
+    row = row * k_kal
+    
+    #2 ) return assimilated data
+    return row.sum()
+
+##################### indexing functions #####################
+#------------------------------------------------------------#
+
+def indexer_day(dafr):
+    day_str = time.fromisoformat('07:00:00')
+    day_stp = time.fromisoformat('18:59:59')
+    return dafr.index.indexer_between_time(day_str, day_stp)
+
+
+def indexer_evening(dafr):
+    evening_str = time.fromisoformat('19:00:00')
+    evening_stp = time.fromisoformat('22:59:59')
+    return dafr.index.indexer_between_time(evening_str, evening_stp)
+
+
+def indexer_night(dafr):
+    night_str = time.fromisoformat('23:00:00')
+    night_stp = time.fromisoformat('06:59:59')
+    return dafr.index.indexer_between_time(night_str, night_stp)
+
+
+
 
 
 def import_sensor_positions(dir_path, file):
