@@ -31,10 +31,12 @@ def make_groups(IDs, stations_df):
     groups_df = pd.DataFrame(data={'grp': tdata}, index=IDs)
 
     for sid in IDs:
-        single = stations_df['coords'][sid]
+        single = (stations_df[stations_df['sensor_name'] == sid]['latitude'][0],
+                  stations_df[stations_df['sensor_name'] == sid]['longitude'][0])
 
         for sidd in IDs:
-            tcoord = stations_df['coords'][sidd]
+            tcoord = (stations_df[stations_df['sensor_name'] == sidd]['latitude'][0],
+                      stations_df[stations_df['sensor_name'] == sidd]['longitude'][0])
             ds.loc[sidd]['d'] = float(distance.distance(single, tcoord).meters)
 
         group = ds.nsmallest(4, 'd')
