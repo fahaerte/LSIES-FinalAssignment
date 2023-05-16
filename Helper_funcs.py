@@ -6,7 +6,7 @@ from geopy import distance
 from datetime import time, datetime
 from csv import reader
 
-columns_sensors_positions = ['sensor_name', 'latitude', 'longitude', 'region']
+columns_sensors_positions = ['IDs', 'latitude', 'longitude', 'region']
 folders = ['region_1_mustamäe_kristiine', 'region_2_data_kesklinn', 'region_3_kadriorg_lasnamäe',
            'region_4_ülemiste']
 start_time = datetime.strptime('2022.08.01 00:00:00', '%Y.%m.%d %H:%M:%S')
@@ -31,12 +31,12 @@ def make_groups(IDs, stations_df):
     groups_df = pd.DataFrame(data={'grp': tdata}, index=IDs)
 
     for sid in IDs:
-        single = (stations_df[stations_df['sensor_name'] == sid]['latitude'][0],
-                  stations_df[stations_df['sensor_name'] == sid]['longitude'][0])
+        single = (stations_df['latitude'][sid],
+                  stations_df['longitude'][sid])
 
         for sidd in IDs:
-            tcoord = (stations_df[stations_df['sensor_name'] == sidd]['latitude'][0],
-                      stations_df[stations_df['sensor_name'] == sidd]['longitude'][0])
+            tcoord = (stations_df['latitude'][sidd],
+                  stations_df['longitude'][sidd])
             ds.loc[sidd]['d'] = float(distance.distance(single, tcoord).meters)
 
         group = ds.nsmallest(4, 'd')
@@ -301,9 +301,9 @@ def import_sensor_positions(dir_path, file):
         for file in os.listdir(dir_path + folder):
             sensor_name = file.split('-')[0]
             region = int(folder.split('_')[1])
-            sensor_positions_df.loc[sensor_positions_df.sensor_name == sensor_name, 'region'] = region
+            sensor_positions_df.loc[sensor_positions_df.IDs == sensor_name, 'region'] = region
 
-    sensor_positions_df = sensor_positions_df.drop_duplicates(subset='sensor_name', keep="last")
+    sensor_positions_df = sensor_positions_df.drop_duplicates(subset='IDs', keep="last")
     return sensor_positions_df
 
 
