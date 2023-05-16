@@ -121,3 +121,15 @@ def compare_results(stat, dic_element, data, data_recon):
     stat[dic_element + '_rmse'] = rmse
     stat[dic_element + '_mad'] = mad
     return stat
+
+
+def random_walk_uni(length, a, b):
+    data = np.zeros(length)
+    noise = a + (b - a) * np.random.random(length)
+    for i in range(1, length):
+        if noise[i] > 0:
+            data[i] = data[i - 1] + noise[i]
+        else:
+            i = i - 1
+    data = data / max(data)
+    return data
