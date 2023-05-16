@@ -98,10 +98,10 @@ def init_ax_resamp(ax, resample_pers, rmse_values):
 def evaluate_resample(df_orig, df_compare):
     resample_pers = [1, 2, 5, 10, 15, 20, 30, 60]
 
-    sensor_names = list(df_orig.columns)
+    IDs = list(df_orig.columns)
     result_list = []
 
-    resample_vars_d = pd.DataFrame(data=np.zeros([len(sensor_names), len(resample_pers)]), columns=resample_pers, index=sensor_names)
+    resample_vars_d = pd.DataFrame(data=np.zeros([len(IDs), len(resample_pers)]), columns=resample_pers, index=IDs)
     
     resample_vars_e = resample_vars_d.copy()
     resample_vars_n = resample_vars_d.copy()
@@ -151,9 +151,9 @@ def evaluate_resample(df_orig, df_compare):
     print(df_orig_d.shape[0])
 
     if (resample_vars_d[1].isna().sum() == df_orig_d.shape[0]):
-        resample_vars_d[1] = np.zeros(len(sensor_names))
-        resample_vars_n[1] = np.zeros(len(sensor_names))
-        resample_vars_e[1] = np.zeros(len(sensor_names))
+        resample_vars_d[1] = np.zeros(len(IDs))
+        resample_vars_n[1] = np.zeros(len(IDs))
+        resample_vars_e[1] = np.zeros(len(IDs))
 
     result_list = [resample_vars_d, resample_vars_e, resample_vars_n]
 
@@ -307,14 +307,14 @@ def import_sensor_positions(dir_path, file):
 
 def import_sensor_data(dir_path):
     list_df = []
-    sensor_names = []
+    IDs = []
     region_list = []
 
     for folder in folders:
         for file in os.listdir(dir_path + folder):
             sensor_name = file.split('-')[0]
             region_list.append(int(folder.split('_')[1]))
-            sensor_names.append(file.split('-')[0])
+            IDs.append(file.split('-')[0])
             df = pd.read_csv(dir_path + folder + "/" + file, index_col=None, header=0)
             df['Time'] = df.apply(lambda row: datetime.strptime(row['Time'], '%Y-%m-%d %H:%M:%S'), axis=1)
             df.rename(columns={'dt_sound_level_dB': sensor_name}, inplace=True)
@@ -322,7 +322,7 @@ def import_sensor_data(dir_path):
 
     tindex = pd.date_range(start_time, end_time, freq='1min')
 
-    df_data_incomplete = pd.DataFrame(index=tindex, columns=sensor_names)
+    df_data_incomplete = pd.DataFrame(index=tindex, columns=IDs)
 
     idx = 0
     for df in list_df:
@@ -335,7 +335,7 @@ def import_sensor_data(dir_path):
         df.index = pd.to_datetime(df['Time'])
         df.drop(columns=['Time'], inplace=True)
         df = df.reindex(tindex)
-        df_data_incomplete[sensor_names[idx]] = df[sensor_names[idx]]
+        df_data_incomplete[IDs[idx]] = df[IDs[idx]]
         idx = idx + 1
 
     return df_data_incomplete
