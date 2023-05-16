@@ -31,10 +31,12 @@ def make_groups(IDs, stations_df):
     groups_df = pd.DataFrame(data={'grp': tdata}, index=IDs)
 
     for sid in IDs:
-        single = stations_df['coords'][sid]
+        single = (stations_df[stations_df['sensor_name'] == sid]['latitude'][0],
+                  stations_df[stations_df['sensor_name'] == sid]['longitude'][0])
 
         for sidd in IDs:
-            tcoord = stations_df['coords'][sidd]
+            tcoord = (stations_df[stations_df['sensor_name'] == sidd]['latitude'][0],
+                      stations_df[stations_df['sensor_name'] == sidd]['longitude'][0])
             ds.loc[sidd]['d'] = float(distance.distance(single, tcoord).meters)
 
         group = ds.nsmallest(4, 'd')
@@ -339,3 +341,23 @@ def import_sensor_data(dir_path):
         idx = idx + 1
 
     return df_data_incomplete
+
+
+def compute_period_indices(df, start, end):
+    if pd.to_datetime(end).hour < pd.to_datetime(pd.to_datetime(start)).hour:
+        return np.where(np.logical_or(
+            (df.index.time > pd.to_datetime(start).time()),
+            (df.index.time <= pd.to_datetime(end).time())))[0]
+    else:
+        return np.where(np.logical_and(df.index.time > pd.to_datetime(start).time(),
+                     df.index.time <= pd.to_datetime(end).time()))[0]
+
+
+def get_sensors_based_on_region(df):
+    d = {'sensor names': df['sensor_name'], 'region': df['region']}
+    sensors = pd.DataFrame(d)
+    sensors_region1 = sensors[sensors['region'] == 1]['sensor names']
+    sensors_region2 = sensors[sensors['region'] == 2]['sensor names']
+    sensors_region3 = sensors[sensors['region'] == 3]['sensor names']
+    sensors_region4 = sensors[sensors['region'] == 4]['sensor names']
+    return sensors_region1, sensors_region2, sensors_region3, sensors_region4

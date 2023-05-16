@@ -108,16 +108,28 @@ def keep_low_rank_model_of_svd(rank, df, s):
     return s_new
 
 
-def apply_svd_local(df, sensor, u, sigma, vt):
+def apply_svd(df, sensor, u, sigma, vt):
     sensor_index = df.columns.get_loc(sensor)
     df_recon = u.dot(sigma.dot(vt))
     reconstructed_sensor = df_recon[:, sensor_index]
     return reconstructed_sensor
 
 
-def compare_results_loc(stat, dic_element, data, data_recon):
+def compare_results(stat, dic_element, data, data_recon):
     rmse = np.sqrt(np.mean((data - data_recon) ** 2)).mean()
     mad = np.median(abs(data - np.median(data_recon)))
     stat[dic_element + '_rmse'] = rmse
     stat[dic_element + '_mad'] = mad
     return stat
+
+
+def random_walk_uni(length, a, b):
+    data = np.zeros(length)
+    noise = a + (b - a) * np.random.random(length)
+    for i in range(1, length):
+        if noise[i] > 0:
+            data[i] = data[i - 1] + noise[i]
+        else:
+            i = i - 1
+    data = data / max(data)
+    return data
