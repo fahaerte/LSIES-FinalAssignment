@@ -354,10 +354,37 @@ def compute_period_indices(df, start, end):
 
 
 def get_sensors_based_on_region(df):
-    d = {'sensor names': df['sensor_name'], 'region': df['region']}
+    d = {'IDs': df['IDs'], 'region': df['region']}
     sensors = pd.DataFrame(d)
-    sensors_region1 = sensors[sensors['region'] == 1]['sensor names']
-    sensors_region2 = sensors[sensors['region'] == 2]['sensor names']
-    sensors_region3 = sensors[sensors['region'] == 3]['sensor names']
-    sensors_region4 = sensors[sensors['region'] == 4]['sensor names']
+    sensors_region1 = sensors[sensors['region'] == 1]['IDs']
+    sensors_region2 = sensors[sensors['region'] == 2]['IDs']
+    sensors_region3 = sensors[sensors['region'] == 3]['IDs']
+    sensors_region4 = sensors[sensors['region'] == 4]['IDs']
     return sensors_region1, sensors_region2, sensors_region3, sensors_region4
+
+
+def mean_model_recon(df_workd_mean, df_endd_mean, tindex):
+    day_str = datetime.strptime('2023.05.01 00:00:00', '%Y.%m.%d %H:%M:%S')
+    day_stp = datetime.strptime('2023.05.01 23:59:59', '%Y.%m.%d %H:%M:%S')
+    daindex = pd.date_range(day_str, day_stp, freq='1min')
+
+    df_mean_ww = pd.DataFrame(index=tindex[tindex.day_of_week < 5], columns=df_workd_mean.columns)
+    df_mean_we = pd.DataFrame(index=tindex[tindex.day_of_week > 4], columns=df_workd_mean.columns)
+
+    for moment in daindex:
+        idxs_work = df_mean_ww.index.indexer_at_time(moment.time())
+        idxs_end = df_mean_we.index.indexer_at_time(moment.time())
+        
+        df_mean_ww.iloc[idxs_work] = df_workd_mean.loc[moment]
+        df_mean_we.iloc[idxs_end] = df_endd_mean.loc[moment]
+        
+    df_mean = pd.concat([df_mean_we, df_mean_ww], axis=0)
+    df_mean.sort_index(inplace=True)
+
+    return df_mean
+
+def calc_rmse(df1, df2):
+       
+    df_err = (df2 - df1)**2
+    rmse = np.sqrt(df_err.mean())
+    return rmse
