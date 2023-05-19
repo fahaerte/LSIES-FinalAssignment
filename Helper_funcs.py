@@ -367,6 +367,12 @@ def mean_model_recon(df_workd_mean, df_endd_mean, tindex):
     day_str = datetime.strptime('2023.05.01 00:00:00', '%Y.%m.%d %H:%M:%S')
     day_stp = datetime.strptime('2023.05.01 23:59:59', '%Y.%m.%d %H:%M:%S')
     daindex = pd.date_range(day_str, day_stp, freq='1min')
+    
+    df_workd_mean = df_workd_mean.reindex(daindex)
+    df_workd_mean.interpolate(inplace=True, method='ffill')
+    
+    df_endd_mean = df_endd_mean.reindex(daindex)
+    df_endd_mean.interpolate(inplace=True, method='ffill')
 
     df_mean_ww = pd.DataFrame(index=tindex[tindex.day_of_week < 5], columns=df_workd_mean.columns)
     df_mean_we = pd.DataFrame(index=tindex[tindex.day_of_week > 4], columns=df_workd_mean.columns)
